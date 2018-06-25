@@ -1,0 +1,66 @@
+create table twitter_text as select get_json_object(line,'$.text') as twitter_text from json_tweet;
+
+create table twitter_words as select explode(split(twitter_text,' ')) as twitter_words from twitter_text;
+
+# hashtags used and how many times each hashtag is used
+create table all_hashtags as select * from twitter_words where twitter_words RLIKE '^#';
+
+
+create table hashtags as select explode(split(twitter_words,'#')) as twitter_words from all_hashtags;
+
+Create table no_of__hashtags as select twitter_words,count(*) as count from hashtags where
+length(twitter_words)>0 group by twitter_words;
+
+#State that has the most active users and number of tweets are posted by State
+
+create table details as select get_json_object(line,'$.id') as user_id,
+get_json_object(line,'$.created_at') as created_at, get_json_object(line,'$.place.full_name') as location, 
+get_json_object(line,'$.text') as word from json_tweet;
+
+Select location, count(word) as number_of_tweets from details group by location sort by
+number_of_tweets DESC;
+
+#top ten users based on users followers count 
+
+create table follower as select get_json_object(line, '$user.followers_count') as followers,
+get_json_object(line,'$.user.name') as user_name from json_tweet;
+
+select user_name, max(followers) as followers from follower group by user_name order by followers DESC;
+
+#polarity score for each tweet that was posted with positive or negative sentiment
+
+create table sentiment as select
+    get_json_object(line,'$.id_str') as id,
+    get_json_object(line,'$.text') as tweet,
+    get_json_object(line,'$.user.name') as user_name,
+    get_json_object(line,'$.created_at') as date
+from json_tweet;
+
+create table sentiment1 as 
+select id,tweet,user_name,substring(cast (from_unixtime(unix_timestamp(date,"EEE MMM dd HH:mm:ss z yyyy")) as timestamp),1,10) time from sentiment;
+
+create table tweet_words as
+select id,word,user_name,tweet,time
+from sentiment1
+lateral view explode(split(tweet,' ')) subView as word;
+
+create table dictionary (word string,score int)
+row format delimited
+fields terminated by '\t';
+
+load data local inpath 'Desktop/Dictionary.txt' into table dictionary;
+
+Create table word_score as select t.id, t.user_name,t.time,t.word,d.score, t.tweet from tweet_words t  join dictionary d on (t.word=d.word);
+
+create table tweet_scores as select id,tweet,sum(score) as score,user_name,time from word_score group by id,tweet,user_name,time;
+
+
+
+
+
+
+
+
+
+
+
